@@ -813,23 +813,24 @@ function AppShell() {
           <a className="sos-mini" href="tel:1930" aria-label="Call cyber fraud helpline 1930"><Icon name="phone" size={17} /> 1930</a>
         </header>
 
-        <main className="screen" key={tab}>
+     <main className="screen" key={tab}>
           {tab === 'home' && <HomeTab go={go} openScam={openScam} />}
           {tab === 'check' && <CheckTab />}
           {tab === 'learn' && <LearnTab openId={openId} setOpenId={setOpenId} />}
           {tab === 'help' && <HelpTab />}
         </main>
+      </div>
 
-        <nav className="tabbar" aria-label="Main navigation" style={{ '--n': index }}>
-          <i className="tab-pill" aria-hidden="true" />
-          {TABS.map(([k, label, ic]) => (
-            <button key={k} className={tab === k ? 'on' : ''} onClick={() => go(k)} aria-current={tab === k ? 'page' : undefined}>
-              <Icon name={ic} size={22} /><span>{label}</span>
-            </button>
-          ))}
+      <nav className="tabbar" aria-label="Main navigation" style={{ '--n': index }}>
+        <i className="tab-pill" aria-hidden="true" />
+        {TABS.map(([k, label, ic]) => (
+          <button key={k} className={tab === k ? 'on' : ''} onClick={() => go(k)} aria-current={tab === k ? 'page' : undefined}>
+            <Icon name={ic} size={22} /><span>{label}</span>
+          </button>
+        ))}
         </nav>
       </div>
-    </div>
+   
   )
 }
 
