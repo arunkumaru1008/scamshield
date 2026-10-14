@@ -124,7 +124,26 @@ function Icon({ name, size = 22 }) {
     ),
     pause: <path d="M9 5v14M15 5v14" />,
     play: <path d="m8 5 11 7-11 7V5Z" />,
+    camera: (
+      <>
+        <path d="M4 8h3l1.5-2h7L17 8h3a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V9a1 1 0 0 1 1-1Z" />
+        <circle cx="12" cy="13.5" r="3.5" />
+      </>
+    ),
+    mail: (
+      <>
+        <rect x="3" y="5" width="18" height="14" rx="2" />
+        <path d="m3 7 9 6 9-6" />
+      </>
+    ),
+    chat: (
+      <>
+        <path d="M4 5h16v11H9l-5 4V5Z" />
+        <path d="M8 9.5h8M8 12.5h5" />
+      </>
+    ),
   }
+  
 
   return (
     <svg
@@ -697,6 +716,12 @@ const MODES = {
     empty: 'Paste a link first.',
     note: 'This checks the name and shape of the link. It cannot see inside the website, so it does not prove a link is safe.',
   },
+    image: {
+    label: 'Camera',
+    kicker: 'Image checker',
+    intro: 'Take a photo of a payment screenshot, message or document and check it.',
+    note: 'The image is sent to the connected server for analysis. This gives warning signs only. A screenshot never proves a payment, so always check your own bank or UPI app.',
+  },
   email: {
     label: 'Email',
     kicker: 'Email checker',
@@ -717,6 +742,14 @@ const MODES = {
     intro: 'Upload a PDF or a Word, Excel or PowerPoint file to check it.',
     note: 'Files are sent to the connected server for analysis. This cannot prove a file is safe or replace antivirus checks. Never open files from unknown senders.',
   },
+  
+}
+const MODE_ICONS = {
+  message: 'chat',
+  link: 'link',
+  image: 'camera',
+  email: 'mail',
+  document: 'file',
 }
 
 function Acc({ open, onToggle, icon, title, sub, id, children }) {
@@ -794,12 +827,27 @@ function ScanResult({ result, note }) {
           <h3>{result.level} risk</h3>
         </div>
       </div>
+            {typeof result.verdict === 'string' && result.verdict.trim() && (
+        <p className="verdict">{result.verdict}</p>
+      )}
 
       {typeof result.fileName === 'string' && (
         <p className="file-meta">
           {result.fileName}
           {typeof result.fileType === 'string' && ` · ${result.fileType}`}
         </p>
+      )}
+            {Array.isArray(result.about) && result.about.length > 0 && (
+        <>
+          <h4>About this image</h4>
+          <ul className="about-list">
+            {result.about
+              .filter((line) => typeof line === 'string')
+              .map((line, index) => (
+                <li key={index} style={{ '--i': index }}>{line}</li>
+              ))}
+          </ul>
+        </>
       )}
 
       <h4>What was found</h4>
@@ -1536,6 +1584,133 @@ function DocumentScan({ note }) {
     </>
   )
 }
+function ImageScan({ note }) {
+  const [file, setFile] = useState(null)
+  const [preview, setPreview] = useState('')
+  const [result, setResult] = useState(null)
+  const [error, setError] = useState('')
+  const cameraRef = useRef(null)
+  const galleryRef = useRef(null)
+  const { request, cancel, loading } = useRequest()
+
+  useEffect(() => () => URL.revokeObjectURL(preview), [preview])
+
+  function choose(next) {
+    if (!next) return
+
+    cancel()
+    setResult(null)
+    setError('')
+    setFile(null)
+    setPreview('')
+
+    if (!next.type.startsWith('image/')) {
+      setError('Take or choose an image file.')
+      return
+    }
+    if (!next.size) {
+      setError('The selected image is empty.')
+      return
+    }
+    if (next.size > MAX_FILE_BYTES) {
+      setError('Image is larger than 10 MB.')
+      return
+    }
+
+    setFile(next)
+    setPreview(URL.createObjectURL(next))
+  }
+
+  async function scan(event) {
+    event.preventDefault()
+    if (loading) return
+
+    setError('')
+    setResult(null)
+
+    if (!file) {
+      setError('Take or choose a photo first.')
+      return
+    }
+
+    try {
+      const form = new FormData()
+      form.append('file', file)
+
+      const data = await request('/api/scan/image', {
+        method: 'POST',
+        body: form,
+      })
+
+      if (data) setResult(validateScan(data))
+    } catch (err) {
+      setError(err.message || 'Could not scan the image. Please try again.')
+    }
+  }
+
+  const onPick = (event) => {
+    choose(event.target.files?.[0])
+    event.target.value = ''
+  }
+
+  return (
+    <>
+      <form onSubmit={scan} aria-busy={loading}>
+        <label>Photo to check</label>
+
+        <input ref={cameraRef} type="file" accept="image/*" capture="environment" hidden onChange={onPick} />
+        <input ref={galleryRef} type="file" accept="image/*" hidden onChange={onPick} />
+
+        <div
+          className={`field cam-preview ${loading ? 'scanning' : ''}`}
+          role="button"
+          tabIndex={0}
+          aria-label="Open camera to take a photo"
+          onClick={() => cameraRef.current?.click()}
+          onKeyDown={(event) => {
+            if (event.key === 'Enter' || event.key === ' ') {
+              event.preventDefault()
+              cameraRef.current?.click()
+            }
+          }}
+        >
+          {preview ? (
+            <img src={preview} alt="Selected photo to check" />
+          ) : (
+            <div className="cam-empty">
+              <Icon name="camera" size={44} />
+              <b>Tap to open camera</b>
+              <small>Photograph the screenshot, payment slip or message</small>
+            </div>
+          )}
+          <button
+            type="button"
+            className="cam-gallery"
+            onClick={(event) => {
+              event.stopPropagation()
+              galleryRef.current?.click()
+            }}
+          >
+            <Icon name="file" size={15} /> Gallery
+          </button>
+          <span className="laser" aria-hidden="true" />
+        </div>
+
+        <button type="submit" className="btn btn-primary btn-block" disabled={loading || !file}>
+          {loading ? (
+            <><span className="spinner" /> Analysing...</>
+          ) : (
+            <><Icon name="scan" size={19} /> Analyse image</>
+          )}
+        </button>
+      </form>
+
+      <ErrorMessage>{error}</ErrorMessage>
+      {!result && <p className="note">{note}</p>}
+      <ScanResult result={result} note={note} />
+    </>
+  )
+}
 
 function CheckTab() {
   const [mode, setMode] = useState('message')
@@ -1621,16 +1796,17 @@ function CheckTab() {
         <h1>Pause before you <span className="grad-text">trust.</span></h1>
       </section>
 
-      <div className="mode-tabs" role="group" aria-label="Check type">
+           <div className="mode-tabs" role="group" aria-label="Check type">
         {Object.entries(MODES).map(([key, item]) => (
           <button
             type="button"
             key={key}
-            className={mode === key ? 'on' : ''}
+            className={`${mode === key ? 'on' : ''} ${key === 'image' ? 'cam' : ''}`}
             aria-pressed={mode === key}
             onClick={() => changeMode(key)}
           >
-            {item.label}
+            <Icon name={MODE_ICONS[key]} size={key === 'image' ? 34 : 27} />
+            <span>{item.label}</span>
           </button>
         ))}
       </div>
@@ -1639,8 +1815,10 @@ function CheckTab() {
         <p className="kicker">{config.kicker}</p>
         <p className="sub">{config.intro}</p>
 
-        {mode === 'document' ? (
+               {mode === 'document' ? (
           <DocumentScan note={config.note} />
+        ) : mode === 'image' ? (
+          <ImageScan note={config.note} />
         ) : (
           <>
             <div className="chips">
@@ -1981,7 +2159,10 @@ function AppShell() {
         <header className={`app-bar ${scrolled ? 'scrolled' : ''}`}>
           <div>
             <p className="status"><span /> Ready</p>
-            <p className="app-name">{APP_NAME}</p>
+            <p className="app-name">
+              {APP_NAME}
+              <span className="live-dot" aria-hidden="true" />
+            </p>
           </div>
           <a
             className="sos-mini"
