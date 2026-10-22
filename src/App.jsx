@@ -781,7 +781,7 @@ function Acc({ open, onToggle, icon, title, sub, id, children }) {
 
 function Gauge({ score, tone }) {
   const target = Math.min(100, Math.max(0, Number(score) || 0))
-  const value = useCountUp(target, true, 1300)
+  const value = useCountUp(target, true, 600)
   const circumference = 2 * Math.PI * 54
 
   return (
@@ -824,6 +824,13 @@ function ScanResult({ result, note }) {
         <Gauge score={result.score} tone={result.level} />
         <div>
           <span className="mini">Warning level</span>
+          <span className={`risk-badge ${result.level}`}>
+            <Icon
+              name={result.level === 'low' ? 'check' : result.level === 'medium' ? 'alert' : 'shield'}
+              size={16}
+            />
+            {String(result.level).toUpperCase()}
+          </span>
           <h3>{result.level} risk</h3>
         </div>
       </div>
@@ -1280,12 +1287,12 @@ function HomeTab({ go, openScam }) {
       <section className="hero-card">
         <div className="hero-shield" aria-hidden="true">
           <i /><i /><i />
-          <div><Icon name="shield" size={34} /></div>
+          <div><Icon name="shield" size={40} /></div>
         </div>
         <p className="kicker">Ready to help</p>
-        <h1>Pause. Check. <span className="grad-text">Then act.</span></h1>
+        <h1>Stay safe from <span className="grad-text">scams</span></h1>
         <p className="hero-text">
-          Paste any suspicious here to identify its state and score. So you can aware from it. 
+          Check messages, links, emails, documents and photos in seconds.
         </p>
         <button
           type="button"
@@ -1584,6 +1591,25 @@ function DocumentScan({ note }) {
     </>
   )
 }
+   async function shrinkImage(file, maxSide = 2000, quality = 0.85) {
+     if (file.size <= 3 * 1024 * 1024) return file
+     try {
+       const bitmap = await createImageBitmap(file)
+       const scale = Math.min(1, maxSide / Math.max(bitmap.width, bitmap.height))
+       const canvas = document.createElement('canvas')
+       canvas.width = Math.round(bitmap.width * scale)
+       canvas.height = Math.round(bitmap.height * scale)
+       canvas.getContext('2d').drawImage(bitmap, 0, 0, canvas.width, canvas.height)
+       bitmap.close?.()
+       const blob = await new Promise((resolve) =>
+         canvas.toBlob(resolve, 'image/jpeg', quality),
+       )
+       if (!blob) return file
+       return new File([blob], 'photo.jpg', { type: 'image/jpeg' })
+     } catch {
+       return file
+     }
+   }
 function ImageScan({ note }) {
   const [file, setFile] = useState(null)
   const [preview, setPreview] = useState('')
@@ -1635,7 +1661,7 @@ function ImageScan({ note }) {
 
     try {
       const form = new FormData()
-      form.append('file', file)
+         form.append('file', await shrinkImage(file))
 
       const data = await request('/api/scan/image', {
         method: 'POST',
@@ -1796,16 +1822,26 @@ function CheckTab() {
         <h1>Pause before you <span className="grad-text">trust.</span></h1>
       </section>
 
-           <div className="mode-tabs" role="group" aria-label="Check type">
+           <div
+        className="mode-tabs"
+        role="tablist"
+        aria-label="Check type"
+        style={{
+          '--n': Math.max(0, Object.keys(MODES).indexOf(mode)),
+          '--count': Object.keys(MODES).length,
+        }}
+      >
+        <i className="mode-pill" aria-hidden="true" />
         {Object.entries(MODES).map(([key, item]) => (
           <button
             type="button"
             key={key}
+            role="tab"
             className={`${mode === key ? 'on' : ''} ${key === 'image' ? 'cam' : ''}`}
-            aria-pressed={mode === key}
+            aria-selected={mode === key}
             onClick={() => changeMode(key)}
           >
-            <Icon name={MODE_ICONS[key]} size={key === 'image' ? 34 : 27} />
+            <Icon name={MODE_ICONS[key]} size={22} />
             <span>{item.label}</span>
           </button>
         ))}
