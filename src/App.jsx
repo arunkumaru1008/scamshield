@@ -17,8 +17,6 @@ const FONT_URL =
 // Optional findings: [{ reason, points, sourceUrl, sourceName }].
 
 // Auth contract defaults: change these constants if your Spring Boot paths differ.
-const AUTH_LOGIN_PATH = '/api/auth/login'
-const AUTH_REGISTER_PATH = '/api/auth/register'
 const AUTH_STORAGE_KEY = 'scamshield.session'
 const SESSION_EXPIRED = 'Your session expired. Please log in again.'
 let activeSession = null
@@ -89,167 +87,8 @@ async function authenticatedFetch(url, options = {}) {
   return response
 }
 
-function validateAuthForm({ mode, name, email, password, confirmPassword }) {
-  if (mode === 'register' && (name.trim().length < 2 || name.trim().length > 80)) {
-    return 'Name must be between 2 and 80 characters.'
-  }
-  if (email.trim().length > 120 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-    return 'Enter a valid email address, up to 120 characters.'
-  }
-  if (password.length < 8) return 'Password must contain at least 8 characters.'
-  if (mode === 'register' && password !== confirmPassword) return 'Passwords do not match.'
-  return ''
-}
-
-// Assumed login response: { token: "JWT", name: "Your name" }.
-// Only this adapter needs changing if your API uses different field names.
-function readLoginSession(data) {
-  if (!data || !tokenIsCurrent(data.token)) {
-    throw new Error('The login response did not contain a valid, unexpired token. Check the login response contract.')
-  }
-  return { token: data.token, name: typeof data.name === 'string' ? data.name : '' }
-}
-
-function AuthPage({ onLogin, sessionMessage }) {
-  const [mode, setMode] = useState('login')
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [password, setPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
-  const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState('')
-  const [message, setMessage] = useState(sessionMessage || '')
-  const { request, cancel, loading } = useRequest()
-  const emailRef = useRef(null)
-
-  useEffect(() => {
-    setMessage(sessionMessage || '')
-  }, [sessionMessage])
-
-  function switchMode(next) {
-    cancel()
-    setMode(next)
-    setPassword('')
-    setConfirmPassword('')
-    setShowPassword(false)
-    setError('')
-    setMessage('')
-  }
-
-  async function submit(event) {
-    event.preventDefault()
-    if (loading) return
-    const problem = validateAuthForm({ mode, name, email, password, confirmPassword })
-    setError('')
-    setMessage('')
-    if (problem) {
-      setError(problem)
-      setPassword('')
-      setConfirmPassword('')
-      return
-    }
-    const submittedEmail = email.trim()
-    const body = mode === 'register'
-      ? { name: name.trim(), email: submittedEmail, password }
-      : { email: submittedEmail, password }
-    // Clear visible passwords immediately; the request body lives only during submit.
-    setPassword('')
-    setConfirmPassword('')
-    try {
-      const data = await request(API + (mode === 'register' ? AUTH_REGISTER_PATH : AUTH_LOGIN_PATH), {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(body),
-        authRequest: true,
-        allowEmpty: mode === 'register',
-      })
-      if (data === null) return // Cancelled or superseded.
-      if (mode === 'register') {
-        setMode('login')
-        setEmail(submittedEmail)
-        setName('')
-        setShowPassword(false)
-        setMessage('Registration successful. Please log in.')
-        emailRef.current?.focus()
-      } else {
-        onLogin(readLoginSession(data))
-      }
-    } catch (failure) {
-      setError(failure instanceof Error ? failure.message : 'Unable to sign in. Please try again.')
-    } finally {
-      body.password = ''
-    }
-  }
-
-  const registering = mode === 'register'
-  return (
-    <main className="auth-page">
-      <div className="auth-layout">
-        <div className="auth-heading">
-          <div className="auth-shield" aria-hidden="true"><Icon name="shield" size={42} /></div>
-          <p className="kicker">{APP_NAME}</p>
-          <h1>{registering ? <>Create your <span className="grad-text">account.</span></> : <>Welcome <span className="grad-text">back.</span></>}</h1>
-        </div>
-        <section className="auth-card" aria-label="Account access">
-          <div className={`auth-tabs ${registering ? 'is-register' : ''}`} role="tablist" aria-label="Account access">
-            <i className="auth-tab-highlight" aria-hidden="true" />
-            {['login', 'register'].map((value) => (
-              <button key={value} id={`auth-tab-${value}`} type="button" role="tab" aria-selected={mode === value} aria-controls="auth-panel" tabIndex={mode === value ? 0 : -1}
-                onClick={() => switchMode(value)}
-                onKeyDown={(event) => {
-                  if (['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
-                    event.preventDefault()
-                    const next = event.key === 'Home' ? 'login' : event.key === 'End' ? 'register' : mode === 'login' ? 'register' : 'login'
-                    switchMode(next)
-                    document.getElementById(`auth-tab-${next}`)?.focus()
-                  }
-                }}>
-                {value === 'login' ? 'Log in' : 'Register'}
-              </button>
-            ))}
-          </div>
-          <div id="auth-panel" role="tabpanel" aria-labelledby={`auth-tab-${mode}`}>
-            <form onSubmit={submit} className="auth-form" noValidate aria-busy={loading}>
-              {registering && <div className="auth-field">
-                <label htmlFor="auth-name">Name</label>
-                <input className="custom-input" id="auth-name" name="name" autoComplete="name" value={name} onChange={(event) => setName(event.target.value)} minLength={2} maxLength={80} required disabled={loading} />
-              </div>}
-              <div className="auth-field">
-                <label htmlFor="auth-email">Email</label>
-                <input ref={emailRef} className="custom-input" id="auth-email" name="email" type="email" inputMode="email" autoComplete="email" autoCapitalize="none" spellCheck={false} value={email} onChange={(event) => setEmail(event.target.value)} maxLength={120} required disabled={loading} />
-              </div>
-              <div className="auth-field">
-                <label htmlFor="auth-password">Password</label>
-                <div className="auth-password-wrap">
-                  <input className="custom-input" id="auth-password" name="password" type={showPassword ? 'text' : 'password'} autoComplete={registering ? 'new-password' : 'current-password'} value={password} onChange={(event) => setPassword(event.target.value)} minLength={8} required disabled={loading} aria-describedby="auth-password-rule" />
-                  <button type="button" className="auth-password-toggle" onClick={() => setShowPassword((value) => !value)} aria-label={showPassword ? 'Hide password' : 'Show password'} aria-pressed={showPassword} title={showPassword ? 'Hide password' : 'Show password'} disabled={loading}><Icon name={showPassword ? 'eyeOff' : 'eye'} size={20} /></button>
-                </div>
-                <small id="auth-password-rule">At least 8 characters</small>
-              </div>
-              {registering && <div className="auth-field">
-                <label htmlFor="auth-confirm-password">Confirm password</label>
-                <input className="custom-input" id="auth-confirm-password" name="confirmPassword" type={showPassword ? 'text' : 'password'} autoComplete="new-password" value={confirmPassword} onChange={(event) => setConfirmPassword(event.target.value)} minLength={8} required disabled={loading} />
-              </div>}
-              <div className="auth-messages" aria-live="polite" aria-atomic="true">
-                <ErrorMessage>{error}</ErrorMessage>
-                {message && <p className="auth-success" role="status">{message}</p>}
-              </div>
-              <button type="submit" className="btn btn-primary btn-block" disabled={loading}>
-                {loading ? <><span className="spinner" aria-hidden="true" /> {registering ? 'Registering...' : 'Logging in...'}</> : <><Icon name="lock" size={18} /> {registering ? 'Register' : 'Log in'}</>}
-              </button>
-            </form>
-          </div>
-        </section>
-      </div>
-    </main>
-  )
-}
-
 function Icon({ name, size = 22 }) {
   const paths = {
-    eye: <><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
-    eyeOff: <><path d="m3 3 18 18M10.6 5.1C17.5 4.3 22 12 22 12s-1.2 2.4-3.5 4.4M6.2 6.2C3.5 8.4 2 12 2 12s3.5 7 10 7a11 11 0 0 0 5.8-1.8M10 10a3 3 0 0 0 4 4" /></>,
-    logout: <><path d="M9 4H4v16h5M10 12h11m-4-4 4 4-4 4" /></>,
     shield: (
       <>
         <path d="M12 3 4.5 6v5.4c0 4.7 3.2 8.8 7.5 9.6 4.3-.8 7.5-4.9 7.5-9.6V6L12 3Z" />
@@ -2410,7 +2249,7 @@ const TABS = [
   ['help', 'Help', 'help'],
 ]
 
-function AppShell({ onLogout, userName }) {
+function AppShell({ userName }) {
   const [tab, setTab] = useState('home')
   const [openId, setOpenId] = useState(null)
   const [scrolled, setScrolled] = useState(false)
@@ -2447,7 +2286,6 @@ function AppShell({ onLogout, userName }) {
             </p>
           </div>
           <div className="header-actions">
-          <button type="button" className="logout-btn" onClick={onLogout} aria-label="Log out" title="Log out"><Icon name="logout" size={20} /></button>
           <a
             className="sos-mini"
             href="tel:1930"
@@ -2494,14 +2332,12 @@ function AppShell({ onLogout, userName }) {
 export default function App() {
   const [ready, setReady] = useState(false)
   const [session, setSession] = useState(null)
-  const [sessionMessage, setSessionMessage] = useState('')
 
   useEffect(() => {
     const saved = restoreSession()
     setSession(saved)
     const expired = () => {
       setSession(null)
-      setSessionMessage(SESSION_EXPIRED)
     }
     window.addEventListener('scamshield:session-expired', expired)
     return () => window.removeEventListener('scamshield:session-expired', expired)
@@ -2521,19 +2357,6 @@ export default function App() {
     }
   }, [session])
 
-  function login(next) {
-    saveSession(next)
-    setSession(next)
-    setSessionMessage('')
-  }
-
-  function logout() {
-    saveSession(null)
-    setSession(null)
-    setSessionMessage('')
-    window.scrollTo({ top: 0, behavior: 'instant' })
-  }
-
   const onDone = useRef(() => setReady(true)).current
 
   useEffect(() => {
@@ -2547,7 +2370,5 @@ export default function App() {
   }, [])
 
   if (!ready) return <Splash onDone={onDone} />
-  return session
-    ? <AppShell onLogout={logout} userName={session.name} />
-    : <AuthPage onLogin={login} sessionMessage={sessionMessage} />
+  return <AppShell userName={session?.name} />
 }
